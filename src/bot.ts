@@ -17,6 +17,14 @@ export class CheckInBot {
   private standupFlowService: StandupFlowService;
 
   constructor() {
+    // Validate environment variables
+    if (!process.env.SLACK_SIGNING_SECRET) {
+      throw new Error('SLACK_SIGNING_SECRET is required');
+    }
+    if (!process.env.SLACK_BOT_TOKEN) {
+      throw new Error('SLACK_BOT_TOKEN is required');
+    }
+
     // Initialize services
     this.firebaseService = new FirebaseService();
     this.slackUIService = new SlackUIService();
@@ -25,10 +33,11 @@ export class CheckInBot {
       this.slackUIService
     );
 
-    // Set up Slack app
+    // Set up Slack app with ExpressReceiver
     this.receiver = new ExpressReceiver({
-      signingSecret: process.env.SLACK_SIGNING_SECRET!,
+      signingSecret: process.env.SLACK_SIGNING_SECRET,
       processBeforeResponse: true,
+      endpoints: '/', // Change from default '/slack/events' to root '/'
     });
 
     this.app = new App({
@@ -41,9 +50,12 @@ export class CheckInBot {
     this.registerViewSubmissions();
 
     // Cleanup old standup states every 30 minutes
-    setInterval(() => {
-      this.standupFlowService.cleanupOldStates(60);
-    }, 30 * 60 * 1000);
+    // Note: This won't work well in Cloud Functions (stateless)
+    if (process.env.NODE_ENV !== 'production') {
+      setInterval(() => {
+        this.standupFlowService.cleanupOldStates(60);
+      }, 30 * 60 * 1000);
+    }
   }
 
   /**
