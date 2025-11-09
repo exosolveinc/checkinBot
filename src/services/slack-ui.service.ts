@@ -12,63 +12,65 @@ import {
 
 export class SlackUIService {
   /**
-   * Build the standup feeling selection view (Step 1)
-   */
-  buildStandupFeelingView(): View {
-    return {
-      type: 'modal',
-      callback_id: 'standup_feeling_submit',
-      title: {
-        type: 'plain_text',
-        text: 'Daily Standup',
-      },
-      submit: {
-        type: 'plain_text',
-        text: 'Next',
-      },
-      blocks: [
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: '*How are you feeling today?* 😊',
-          },
+ * Build the standup feeling selection view (Step 1)
+ */
+buildStandupFeelingView(): View {
+  return {
+    type: 'modal',
+    callback_id: 'standup_feeling_submit',
+    title: {
+      type: 'plain_text',
+      text: 'Daily Standup',
+    },
+    submit: {
+      type: 'plain_text',
+      text: 'Next',
+    },
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: '*How are you feeling today?* 😊',
         },
-        {
-          type: 'actions',
-          block_id: 'feeling_selection',
-          elements: [
+      },
+      {
+        type: 'input',
+        block_id: 'feeling_selection',
+        element: {
+          type: 'radio_buttons',
+          action_id: 'feeling',
+          options: [
             {
-              type: 'radio_buttons',
-              action_id: 'feeling',
-              options: [
-                {
-                  text: { type: 'plain_text', text: '😄 Great' },
-                  value: 'great',
-                },
-                {
-                  text: { type: 'plain_text', text: '🙂 Good' },
-                  value: 'good',
-                },
-                {
-                  text: { type: 'plain_text', text: '😐 Okay' },
-                  value: 'okay',
-                },
-                {
-                  text: { type: 'plain_text', text: '😓 Tired' },
-                  value: 'tired',
-                },
-                {
-                  text: { type: 'plain_text', text: '😰 Stressed' },
-                  value: 'stressed',
-                },
-              ],
+              text: { type: 'plain_text', text: '😄 Great' },
+              value: 'great',
+            },
+            {
+              text: { type: 'plain_text', text: '🙂 Good' },
+              value: 'good',
+            },
+            {
+              text: { type: 'plain_text', text: '😐 Okay' },
+              value: 'okay',
+            },
+            {
+              text: { type: 'plain_text', text: '😓 Tired' },
+              value: 'tired',
+            },
+            {
+              text: { type: 'plain_text', text: '😰 Stressed' },
+              value: 'stressed',
             },
           ],
         },
-      ],
-    };
-  }
+        label: {
+          type: 'plain_text',
+          text: 'Select your mood',
+        },
+      },
+    ],
+  };
+}
 
   /**
    * Build task entry modal for adding yesterday/today tasks
