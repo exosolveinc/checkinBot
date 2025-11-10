@@ -4,7 +4,8 @@
  */
 
 import { App, ExpressReceiver } from '@slack/bolt';
-import { CheckInRecord, TaskEntryFormData } from './models/types';
+import { WebClient } from '@slack/web-api';
+import { CheckInRecord, FeelingType, StandupData, TaskEntry, TaskEntryFormData } from './models/types';
 import { FirebaseService } from './services/firebase.service';
 import { SlackUIService } from './services/slack-ui.service';
 import { StandupFlowService } from './services/standup-flow.service';
@@ -37,7 +38,7 @@ export class CheckInBot {
     this.receiver = new ExpressReceiver({
       signingSecret: process.env.SLACK_SIGNING_SECRET,
       processBeforeResponse: true,
-      endpoints: '/', // Change from default '/slack/events' to root '/'
+      endpoints: '/',
     });
 
     this.app = new App({
@@ -48,9 +49,9 @@ export class CheckInBot {
     this.registerCommands();
     this.registerActions();
     this.registerViewSubmissions();
+    this.registerAppHome(); // Add App Home handlers
 
     // Cleanup old standup states every 30 minutes
-    // Note: This won't work well in Cloud Functions (stateless)
     if (process.env.NODE_ENV !== 'production') {
       setInterval(() => {
         this.standupFlowService.cleanupOldStates(60);
@@ -240,8 +241,22 @@ export class CheckInBot {
    * Register action handlers
    */
   private registerActions(): void {
-    // Handle feeling selection (not needed as we get it on submit)
-    // But we keep this for potential real-time validation
+    // Handle the standup trigger button after checkin
+    this.app.action('trigger_standup_after_checkin', async ({ ack, body, client }) => {
+      await ack();
+
+      try {
+        const userId = body.user.id;
+        const config = await this.firebaseService.getBotConfig();
+
+        await client.views.open({
+          trigger_id: (body as any).trigger_id,
+          view: this.slackUIService.buildQuickStandupModal(config.projects),
+        });
+      } catch (error) {
+        console.error('Error opening standup modal:', error);
+      }
+    });
   }
 
   /**
@@ -250,13 +265,11 @@ export class CheckInBot {
   private registerViewSubmissions(): void {
     // Handle feeling submission
     this.app.view('standup_feeling_submit', async ({ ack, view, body, client }) => {
-      // ✅ Acknowledge immediately with response_action to update the view
       const userId = body.user.id;
       const values = view.state.values;
       const feeling = values.feeling_selection?.feeling?.selected_option?.value;
 
       if (!feeling) {
-        // If no feeling selected, show validation error
         await ack({
           response_action: 'errors',
           errors: {
@@ -267,16 +280,13 @@ export class CheckInBot {
       }
 
       try {
-        // Get config before acking (fast operation)
         const config = await this.firebaseService.getBotConfig();
 
-        // ✅ Acknowledge and update view in one response
         await ack({
           response_action: 'update',
           view: this.slackUIService.buildTaskEntryView('yesterday', config.projects),
         });
 
-        // Update state after acking
         await this.standupFlowService.handleFeelingSubmit(
           client,
           userId,
@@ -285,7 +295,6 @@ export class CheckInBot {
         );
       } catch (error) {
         console.error('Error handling feeling submit:', error);
-        // Acknowledge with error message
         await ack({
           response_action: 'errors',
           errors: {
@@ -297,18 +306,14 @@ export class CheckInBot {
 
     // Handle yesterday task entry
     this.app.view('task_entry_yesterday', async ({ ack, view, body, client }) => {
-      // Check if it's "Add Another" (submit) or "Done" (close)
       const isAddAnother = body.type === 'view_submission';
 
       if (isAddAnother) {
         await ack();
       } else {
-        // "Done" clicked - move to next step by updating the view
         await ack();
         try {
           const config = await this.firebaseService.getBotConfig();
-
-          // Update the current view to show today's tasks
           await client.views.update({
             view_id: view.id,
             view: this.slackUIService.buildTaskEntryView('today', config.projects),
@@ -323,7 +328,6 @@ export class CheckInBot {
         const userId = body.user.id;
         const values = view.state.values;
 
-        // Extract task data
         const taskData: TaskEntryFormData = {
           project: values.project?.project_select?.selected_option?.value || '',
           ticketNumber: values.ticket_number?.ticket_input?.value || 'N/A',
@@ -333,14 +337,13 @@ export class CheckInBot {
           difficultyLevel: values.difficulty_level?.difficulty_select?.selected_option?.value || '3',
         };
 
-        // Handle task submit
         await this.standupFlowService.handleTaskSubmit(
           client,
           userId,
           'yesterday',
           taskData,
           view.id,
-          true // Add another
+          true
         );
       } catch (error) {
         console.error('Error handling yesterday task submit:', error);
@@ -354,7 +357,6 @@ export class CheckInBot {
       if (isAddAnother) {
         await ack();
       } else {
-        // "Done" clicked - move to blockers by updating the view
         await ack();
         try {
           const userId = body.user.id;
@@ -376,7 +378,6 @@ export class CheckInBot {
         const userId = body.user.id;
         const values = view.state.values;
 
-        // Extract task data
         const taskData: TaskEntryFormData = {
           project: values.project?.project_select?.selected_option?.value || '',
           ticketNumber: values.ticket_number?.ticket_input?.value || 'N/A',
@@ -386,14 +387,13 @@ export class CheckInBot {
           difficultyLevel: values.difficulty_level?.difficulty_select?.selected_option?.value || '3',
         };
 
-        // Handle task submit
         await this.standupFlowService.handleTaskSubmit(
           client,
           userId,
           'today',
           taskData,
           view.id,
-          true // Add another
+          true
         );
       } catch (error) {
         console.error('Error handling today task submit:', error);
@@ -407,18 +407,14 @@ export class CheckInBot {
       try {
         const userId = body.user.id;
         const values = view.state.values;
-
-        // Extract blockers
         const blockers = values.blockers?.blockers_input?.value || '';
 
-        // Complete standup
         const standupData = await this.standupFlowService.handleBlockersSubmit(
           client,
           userId,
           blockers
         );
 
-        // Send confirmation message
         await client.chat.postMessage({
           channel: userId,
           text: `✅ Your standup for ${standupData.date} has been submitted successfully!`,
@@ -432,10 +428,318 @@ export class CheckInBot {
             },
           ],
         });
+
+        // Refresh home view
+        await this.refreshHomeView(client, userId);
       } catch (error) {
         console.error('Error handling blockers submit:', error);
       }
     });
+
+    // Handle check-in modal submission
+    this.app.view('checkin_modal_submit', async ({ ack, view, body, client }) => {
+      await ack();
+
+      try {
+        const userId = body.user.id;
+        const userInfo = await client.users.info({ user: userId });
+        const userName = userInfo.user?.real_name || userInfo.user?.name || 'User';
+        const userEmail = userInfo.user?.profile?.email || '';
+
+        const values = view.state.values;
+        const submitStandup = values.checkin_options?.options_select?.selected_options?.some(
+          (opt: any) => opt.value === 'submit_standup'
+        );
+        const note = values.checkin_note?.note_input?.value || '';
+
+        const checkInData: CheckInRecord = {
+          userId,
+          userName,
+          userEmail,
+          type: 'checkin',
+          timestamp: new Date(),
+        };
+        await this.firebaseService.saveCheckIn(checkInData);
+
+        const time = new Date().toLocaleTimeString();
+        await client.chat.postMessage({
+          channel: userId,
+          text: `✅ Checked in at ${time}${note ? `\nNote: ${note}` : ''}`,
+        });
+
+        if (submitStandup) {
+          setTimeout(async () => {
+            await client.chat.postMessage({
+              channel: userId,
+              text: 'Ready to submit your standup?',
+              blocks: [
+                {
+                  type: 'section',
+                  text: {
+                    type: 'mrkdwn',
+                    text: '📝 *Ready to submit your standup?*',
+                  },
+                },
+                {
+                  type: 'actions',
+                  elements: [
+                    {
+                      type: 'button',
+                      text: {
+                        type: 'plain_text',
+                        text: 'Submit Standup Now',
+                      },
+                      style: 'primary',
+                      action_id: 'trigger_standup_after_checkin',
+                    },
+                  ],
+                },
+              ],
+            });
+          }, 500);
+        }
+
+        await this.refreshHomeView(client, userId);
+      } catch (error) {
+        console.error('Error handling check-in modal:', error);
+      }
+    });
+
+    // Handle check-out modal submission
+    this.app.view('checkout_modal_submit', async ({ ack, view, body, client }) => {
+      await ack();
+
+      try {
+        const userId = body.user.id;
+        const userInfo = await client.users.info({ user: userId });
+        const userName = userInfo.user?.real_name || userInfo.user?.name || 'User';
+        const userEmail = userInfo.user?.profile?.email || '';
+
+        const values = view.state.values;
+        const note = values.checkout_note?.note_input?.value || '';
+
+        const checkOutData: CheckInRecord = {
+          userId,
+          userName,
+          userEmail,
+          type: 'checkout',
+          timestamp: new Date(),
+        };
+        await this.firebaseService.saveCheckIn(checkOutData);
+
+        const time = new Date().toLocaleTimeString();
+        await client.chat.postMessage({
+          channel: userId,
+          text: `👋 Checked out at ${time}${note ? `\nNote: ${note}` : ''}`,
+        });
+
+        await this.refreshHomeView(client, userId);
+      } catch (error) {
+        console.error('Error handling check-out modal:', error);
+      }
+    });
+
+    // Handle quick standup submission
+    this.app.view('quick_standup_submit', async ({ ack, view, body, client }) => {
+      await ack();
+
+      try {
+        const userId = body.user.id;
+        const userInfo = await client.users.info({ user: userId });
+        const userName = userInfo.user?.real_name || userInfo.user?.name || 'User';
+
+        const values = view.state.values;
+
+        const feeling = values.feeling_selection?.feeling?.selected_option?.value as FeelingType;
+        const project = values.project_select?.project?.selected_option?.value || '';
+        const yesterdaySummary = values.yesterday_summary?.summary_input?.value || '';
+        const todayPlan = values.today_plan?.plan_input?.value || '';
+        const blockers = values.blockers?.blockers_input?.value || '';
+
+        const today = new Date();
+        const dateStr = today.toISOString().split('T')[0];
+
+        const yesterdayTasks: TaskEntry[] = yesterdaySummary ? [{
+          project,
+          ticketNumber: 'N/A',
+          taskTitle: yesterdaySummary,
+          estimatedTime: '2-3h',
+          confidenceScore: 3,
+          difficultyLevel: 3,
+        }] : [];
+
+        const todayTasks: TaskEntry[] = todayPlan ? [{
+          project,
+          ticketNumber: 'N/A',
+          taskTitle: todayPlan,
+          estimatedTime: '2-3h',
+          confidenceScore: 3,
+          difficultyLevel: 3,
+        }] : [];
+
+        const standupData: StandupData = {
+          userId,
+          userName,
+          feeling,
+          yesterday: yesterdayTasks,
+          today: todayTasks,
+          blockers,
+          date: dateStr,
+          timestamp: new Date(),
+        };
+
+        await this.firebaseService.saveStandup(standupData);
+
+        const projectChannel = await this.firebaseService.getProjectChannel(project);
+        if (projectChannel) {
+          await client.chat.postMessage({
+            channel: projectChannel.channelId,
+            blocks: this.slackUIService.buildStandupSummaryMessage(standupData),
+            text: `${userName}'s daily standup for ${dateStr}`,
+          });
+        }
+
+        await client.chat.postMessage({
+          channel: userId,
+          text: `✅ Your standup for ${dateStr} has been submitted!`,
+        });
+
+        await this.refreshHomeView(client, userId);
+      } catch (error) {
+        console.error('Error handling quick standup:', error);
+      }
+    });
+  }
+
+  /**
+   * Register app home handlers
+   */
+  private registerAppHome(): void {
+    // Handle app home opened event
+    this.app.event('app_home_opened', async ({ event, client }) => {
+      try {
+        const userId = event.user;
+
+        const userInfo = await client.users.info({ user: userId });
+        const userName = userInfo.user?.real_name || userInfo.user?.name || 'User';
+
+        const isCheckedIn = await this.firebaseService.isUserCheckedIn(userId);
+        const lastCheckIn = await this.firebaseService.getLastCheckIn(userId);
+        const stats = await this.firebaseService.getUserStats(userId, 30);
+
+        const today = new Date().toISOString().split('T')[0];
+        const todayStandup = await this.firebaseService.getStandupByDate(userId, today);
+
+        await client.views.publish({
+          user_id: userId,
+          view: this.slackUIService.buildAppHomeView(
+            userName,
+            isCheckedIn,
+            lastCheckIn,
+            stats,
+            todayStandup
+          ),
+        });
+      } catch (error) {
+        console.error('Error publishing home view:', error);
+      }
+    });
+
+    // Handle home check-in button - OPEN MODAL
+    this.app.action('home_checkin', async ({ ack, body, client }) => {
+      await ack();
+
+      try {
+        const userId = body.user.id;
+
+        const isCheckedIn = await this.firebaseService.isUserCheckedIn(userId);
+        if (isCheckedIn) {
+          await this.refreshHomeView(client, userId);
+          return;
+        }
+
+        await client.views.open({
+          trigger_id: (body as any).trigger_id,
+          view: this.slackUIService.buildCheckInModal(),
+        });
+      } catch (error) {
+        console.error('Error opening check-in modal:', error);
+      }
+    });
+
+    // Handle home check-out button - OPEN MODAL
+    this.app.action('home_checkout', async ({ ack, body, client }) => {
+      await ack();
+
+      try {
+        const userId = body.user.id;
+
+        const isCheckedIn = await this.firebaseService.isUserCheckedIn(userId);
+        if (!isCheckedIn) {
+          await this.refreshHomeView(client, userId);
+          return;
+        }
+
+        await client.views.open({
+          trigger_id: (body as any).trigger_id,
+          view: this.slackUIService.buildCheckOutModal(),
+        });
+      } catch (error) {
+        console.error('Error opening check-out modal:', error);
+      }
+    });
+
+    // Handle home standup button - OPEN MODAL
+    this.app.action('home_start_standup', async ({ ack, body, client }) => {
+      await ack();
+
+      try {
+        const userId = body.user.id;
+
+        if (this.standupFlowService.hasActiveFlow(userId)) {
+          return;
+        }
+
+        const config = await this.firebaseService.getBotConfig();
+
+        await client.views.open({
+          trigger_id: (body as any).trigger_id,
+          view: this.slackUIService.buildQuickStandupModal(config.projects),
+        });
+      } catch (error) {
+        console.error('Error starting standup from home:', error);
+      }
+    });
+  }
+
+  /**
+   * Helper to refresh home view
+   */
+  private async refreshHomeView(client: WebClient, userId: string): Promise<void> {
+    try {
+      const userInfo = await client.users.info({ user: userId });
+      const userName = userInfo.user?.real_name || userInfo.user?.name || 'User';
+
+      const isCheckedIn = await this.firebaseService.isUserCheckedIn(userId);
+      const lastCheckIn = await this.firebaseService.getLastCheckIn(userId);
+      const stats = await this.firebaseService.getUserStats(userId, 30);
+
+      const today = new Date().toISOString().split('T')[0];
+      const todayStandup = await this.firebaseService.getStandupByDate(userId, today);
+
+      await client.views.publish({
+        user_id: userId,
+        view: this.slackUIService.buildAppHomeView(
+          userName,
+          isCheckedIn,
+          lastCheckIn,
+          stats,
+          todayStandup
+        ),
+      });
+    } catch (error) {
+      console.error('Error refreshing home view:', error);
+    }
   }
 
   /**

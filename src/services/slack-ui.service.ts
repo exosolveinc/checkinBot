@@ -5,72 +5,508 @@
 
 import { Block, KnownBlock, View } from '@slack/web-api';
 import {
+  CheckInRecord,
   FeelingType,
   StandupData,
   TaskEntry
 } from '../models/types';
 
 export class SlackUIService {
+
   /**
- * Build the standup feeling selection view (Step 1)
+ * Build the App Home view with action buttons
  */
-buildStandupFeelingView(): View {
-  return {
-    type: 'modal',
-    callback_id: 'standup_feeling_submit',
-    title: {
-      type: 'plain_text',
-      text: 'Daily Standup',
-    },
-    submit: {
-      type: 'plain_text',
-      text: 'Next',
-    },
-    blocks: [
+  buildAppHomeView(
+    userName: string,
+    isCheckedIn: boolean,
+    lastCheckIn: CheckInRecord | null,
+    stats: any,
+    todayStandup: StandupData | null
+  ): View {
+    const currentTime = new Date().toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const blocks: (Block | KnownBlock)[] = [
+      {
+        type: 'header',
+        text: {
+          type: 'plain_text',
+          text: `👋 Welcome, ${userName}!`,
+          emoji: true,
+        },
+      },
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: '*How are you feeling today?* 😊',
+          text: `🕐 Current time: *${currentTime}*`,
         },
       },
       {
-        type: 'input',
-        block_id: 'feeling_selection',
-        element: {
-          type: 'radio_buttons',
-          action_id: 'feeling',
-          options: [
-            {
-              text: { type: 'plain_text', text: '😄 Great' },
-              value: 'great',
-            },
-            {
-              text: { type: 'plain_text', text: '🙂 Good' },
-              value: 'good',
-            },
-            {
-              text: { type: 'plain_text', text: '😐 Okay' },
-              value: 'okay',
-            },
-            {
-              text: { type: 'plain_text', text: '😓 Tired' },
-              value: 'tired',
-            },
-            {
-              text: { type: 'plain_text', text: '😰 Stressed' },
-              value: 'stressed',
-            },
-          ],
-        },
-        label: {
-          type: 'plain_text',
-          text: 'Select your mood',
-        },
+        type: 'divider',
       },
-    ],
-  };
-}
+    ];
+
+    // Status Section
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: isCheckedIn
+          ? '✅ *Status: Checked In*\nYou are currently active.'
+          : '⏸️ *Status: Checked Out*\nStart your day by checking in!',
+      },
+    });
+
+    if (lastCheckIn) {
+      const lastTime = lastCheckIn.timestamp.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      blocks.push({
+        type: 'context',
+        elements: [
+          {
+            type: 'mrkdwn',
+            text: `Last activity: ${lastCheckIn.type === 'checkin' ? 'Checked in' : 'Checked out'} at ${lastTime}`,
+          },
+        ],
+      });
+    }
+
+    blocks.push({
+      type: 'divider',
+    });
+
+    // Quick Actions Section
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: '*⚡ Quick Actions*',
+      },
+    });
+
+    // Check-in/Check-out button
+    blocks.push({
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: {
+            type: 'plain_text',
+            text: isCheckedIn ? '👋 Check Out' : '👋 Check In',
+            emoji: true,
+          },
+          style: isCheckedIn ? undefined : 'primary',
+          action_id: isCheckedIn ? 'home_checkout' : 'home_checkin',
+          value: 'toggle_checkin',
+        },
+        {
+          type: 'button',
+          text: {
+            type: 'plain_text',
+            text: '📝 Submit Standup',
+            emoji: true,
+          },
+          style: todayStandup ? undefined : 'primary',
+          action_id: 'home_start_standup',
+          value: 'start_standup',
+        },
+      ],
+    });
+
+    blocks.push({
+      type: 'divider',
+    });
+
+    // Standup Status
+    const today = new Date().toISOString().split('T')[0];
+    if (todayStandup) {
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `✅ *Today's Standup Completed*\n📊 Yesterday: ${todayStandup.yesterday.length} task(s)\n📋 Today: ${todayStandup.today.length} task(s)\n${todayStandup.blockers ? `🚧 Has blockers` : ''}`,
+        },
+      });
+    } else {
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `⏰ *Today's Standup: Not submitted*\nClick "Submit Standup" to share your daily update.`,
+        },
+      });
+    }
+
+    blocks.push({
+      type: 'divider',
+    });
+
+    // Stats Section
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: '*📊 Your Stats (Last 30 Days)*',
+      },
+    });
+
+    blocks.push({
+      type: 'section',
+      fields: [
+        {
+          type: 'mrkdwn',
+          text: `*Check-ins*\n${stats?.totalCheckIns || 0}`,
+        },
+        {
+          type: 'mrkdwn',
+          text: `*Check-outs*\n${stats?.totalCheckOuts || 0}`,
+        },
+      ],
+    });
+
+    return {
+      type: 'home',
+      blocks,
+    };
+  }
+
+  /**
+ * Build Check-in Modal with options
+ */
+  buildCheckInModal(): View {
+    return {
+      type: 'modal',
+      callback_id: 'checkin_modal_submit',
+      title: {
+        type: 'plain_text',
+        text: 'Check In',
+      },
+      submit: {
+        type: 'plain_text',
+        text: 'Check In',
+      },
+      close: {
+        type: 'plain_text',
+        text: 'Cancel',
+      },
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: '👋 *Ready to start your day?*\n\nCheck in to mark your presence and optionally submit your daily standup.',
+          },
+        },
+        {
+          type: 'divider',
+        },
+        {
+          type: 'input',
+          block_id: 'checkin_options',
+          element: {
+            type: 'checkboxes',
+            action_id: 'options_select',
+            options: [
+              {
+                text: {
+                  type: 'mrkdwn',
+                  text: '*Submit standup now*\nI want to share my daily update right away',
+                },
+                value: 'submit_standup',
+              },
+            ],
+          },
+          label: {
+            type: 'plain_text',
+            text: 'Options',
+          },
+          optional: true,
+        },
+        {
+          type: 'input',
+          block_id: 'checkin_note',
+          element: {
+            type: 'plain_text_input',
+            action_id: 'note_input',
+            placeholder: {
+              type: 'plain_text',
+              text: 'Add a note (optional)',
+            },
+            multiline: true,
+          },
+          label: {
+            type: 'plain_text',
+            text: 'Note',
+          },
+          optional: true,
+        },
+      ],
+    };
+  }
+
+  /**
+   * Build Check-out Modal
+   */
+  buildCheckOutModal(): View {
+    return {
+      type: 'modal',
+      callback_id: 'checkout_modal_submit',
+      title: {
+        type: 'plain_text',
+        text: 'Check Out',
+      },
+      submit: {
+        type: 'plain_text',
+        text: 'Check Out',
+      },
+      close: {
+        type: 'plain_text',
+        text: 'Cancel',
+      },
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: '👋 *Ready to wrap up your day?*\n\nCheck out to mark the end of your workday.',
+          },
+        },
+        {
+          type: 'divider',
+        },
+        {
+          type: 'input',
+          block_id: 'checkout_note',
+          element: {
+            type: 'plain_text_input',
+            action_id: 'note_input',
+            placeholder: {
+              type: 'plain_text',
+              text: 'Add a note about your day (optional)',
+            },
+            multiline: true,
+          },
+          label: {
+            type: 'plain_text',
+            text: 'Note',
+          },
+          optional: true,
+        },
+      ],
+    };
+  }
+
+  /**
+   * Build Quick Standup Modal (simplified one-page version)
+   */
+  buildQuickStandupModal(projects: string[]): View {
+    return {
+      type: 'modal',
+      callback_id: 'quick_standup_submit',
+      title: {
+        type: 'plain_text',
+        text: 'Quick Standup',
+      },
+      submit: {
+        type: 'plain_text',
+        text: 'Submit',
+      },
+      close: {
+        type: 'plain_text',
+        text: 'Cancel',
+      },
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: '📝 *Quick Daily Update*\n\nShare a brief update about your work.',
+          },
+        },
+        {
+          type: 'divider',
+        },
+        {
+          type: 'input',
+          block_id: 'feeling_selection',
+          element: {
+            type: 'static_select',
+            action_id: 'feeling',
+            placeholder: {
+              type: 'plain_text',
+              text: 'How are you feeling?',
+            },
+            options: [
+              {
+                text: { type: 'plain_text', text: '😄 Great', emoji: true },
+                value: 'great',
+              },
+              {
+                text: { type: 'plain_text', text: '🙂 Good', emoji: true },
+                value: 'good',
+              },
+              {
+                text: { type: 'plain_text', text: '😐 Okay', emoji: true },
+                value: 'okay',
+              },
+              {
+                text: { type: 'plain_text', text: '😓 Tired', emoji: true },
+                value: 'tired',
+              },
+              {
+                text: { type: 'plain_text', text: '😰 Stressed', emoji: true },
+                value: 'stressed',
+              },
+            ],
+          },
+          label: {
+            type: 'plain_text',
+            text: 'Feeling',
+          },
+        },
+        {
+          type: 'input',
+          block_id: 'project_select',
+          element: {
+            type: 'static_select',
+            action_id: 'project',
+            placeholder: {
+              type: 'plain_text',
+              text: 'Select project',
+            },
+            options: projects.map((proj) => ({
+              text: { type: 'plain_text', text: proj },
+              value: proj,
+            })),
+          },
+          label: {
+            type: 'plain_text',
+            text: 'Primary Project',
+          },
+        },
+        {
+          type: 'input',
+          block_id: 'yesterday_summary',
+          element: {
+            type: 'plain_text_input',
+            action_id: 'summary_input',
+            placeholder: {
+              type: 'plain_text',
+              text: 'What did you accomplish yesterday?',
+            },
+            multiline: true,
+          },
+          label: {
+            type: 'plain_text',
+            text: "Yesterday's Work",
+          },
+        },
+        {
+          type: 'input',
+          block_id: 'today_plan',
+          element: {
+            type: 'plain_text_input',
+            action_id: 'plan_input',
+            placeholder: {
+              type: 'plain_text',
+              text: 'What are you working on today?',
+            },
+            multiline: true,
+          },
+          label: {
+            type: 'plain_text',
+            text: "Today's Plan",
+          },
+        },
+        {
+          type: 'input',
+          block_id: 'blockers',
+          element: {
+            type: 'plain_text_input',
+            action_id: 'blockers_input',
+            placeholder: {
+              type: 'plain_text',
+              text: 'Any blockers or challenges?',
+            },
+            multiline: true,
+          },
+          label: {
+            type: 'plain_text',
+            text: 'Blockers',
+          },
+          optional: true,
+        },
+      ],
+    };
+  }
+
+  /**
+ * Build the standup feeling selection view (Step 1)
+ */
+  buildStandupFeelingView(): View {
+    return {
+      type: 'modal',
+      callback_id: 'standup_feeling_submit',
+      title: {
+        type: 'plain_text',
+        text: 'Daily Standup',
+      },
+      submit: {
+        type: 'plain_text',
+        text: 'Next',
+      },
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: '*How are you feeling today?* 😊',
+          },
+        },
+        {
+          type: 'input',
+          block_id: 'feeling_selection',
+          element: {
+            type: 'radio_buttons',
+            action_id: 'feeling',
+            options: [
+              {
+                text: { type: 'plain_text', text: '😄 Great' },
+                value: 'great',
+              },
+              {
+                text: { type: 'plain_text', text: '🙂 Good' },
+                value: 'good',
+              },
+              {
+                text: { type: 'plain_text', text: '😐 Okay' },
+                value: 'okay',
+              },
+              {
+                text: { type: 'plain_text', text: '😓 Tired' },
+                value: 'tired',
+              },
+              {
+                text: { type: 'plain_text', text: '😰 Stressed' },
+                value: 'stressed',
+              },
+            ],
+          },
+          label: {
+            type: 'plain_text',
+            text: 'Select your mood',
+          },
+        },
+      ],
+    };
+  }
 
   /**
    * Build task entry modal for adding yesterday/today tasks
@@ -102,17 +538,17 @@ buildStandupFeelingView(): View {
         // Show existing tasks if any
         ...(existingTasks.length > 0
           ? [
-              {
-                type: 'section' as const,
-                text: {
-                  type: 'mrkdwn' as const,
-                  text: `*Tasks added (${existingTasks.length}):*\n${existingTasks
-                    .map((task, i) => `${i + 1}. ${task.taskTitle} - ${task.project}`)
-                    .join('\n')}`,
-                },
+            {
+              type: 'section' as const,
+              text: {
+                type: 'mrkdwn' as const,
+                text: `*Tasks added (${existingTasks.length}):*\n${existingTasks
+                  .map((task, i) => `${i + 1}. ${task.taskTitle} - ${task.project}`)
+                  .join('\n')}`,
               },
-              { type: 'divider' as const },
-            ]
+            },
+            { type: 'divider' as const },
+          ]
           : []),
         {
           type: 'input',
