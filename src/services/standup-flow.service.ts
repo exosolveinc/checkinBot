@@ -21,7 +21,7 @@ export class StandupFlowService {
   constructor(
     private firebaseService: FirebaseService,
     private slackUIService: SlackUIService
-  ) {}
+  ) { }
 
   /**
    * Start the standup flow
@@ -69,14 +69,6 @@ export class StandupFlowService {
       state.step = 'yesterday';
       this.standupStates.set(userId, state);
 
-      // Get projects from config
-      const config = await this.firebaseService.getBotConfig();
-
-      // Show yesterday tasks modal
-      await client.views.update({
-        view_id: viewId,
-        view: this.slackUIService.buildTaskEntryView('yesterday', config.projects),
-      });
     } catch (error) {
       console.error('Error handling feeling submit:', error);
       throw error;

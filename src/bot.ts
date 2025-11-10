@@ -250,21 +250,33 @@ export class CheckInBot {
   private registerViewSubmissions(): void {
     // Handle feeling submission
     this.app.view('standup_feeling_submit', async ({ ack, view, body, client }) => {
-      await ack();
+      // ✅ Acknowledge immediately with response_action to update the view
+      const userId = body.user.id;
+      const values = view.state.values;
+      const feeling = values.feeling_selection?.feeling?.selected_option?.value;
+
+      if (!feeling) {
+        // If no feeling selected, show validation error
+        await ack({
+          response_action: 'errors',
+          errors: {
+            feeling_selection: 'Please select how you are feeling',
+          },
+        });
+        return;
+      }
 
       try {
-        const userId = body.user.id;
-        const values = view.state.values;
+        // Get config before acking (fast operation)
+        const config = await this.firebaseService.getBotConfig();
 
-        // Extract feeling
-        const feeling = values.feeling_selection?.feeling?.selected_option?.value;
+        // ✅ Acknowledge and update view in one response
+        await ack({
+          response_action: 'update',
+          view: this.slackUIService.buildTaskEntryView('yesterday', config.projects),
+        });
 
-        if (!feeling) {
-          console.error('No feeling selected');
-          return;
-        }
-
-        // Handle feeling submit
+        // Update state after acking
         await this.standupFlowService.handleFeelingSubmit(
           client,
           userId,
@@ -273,6 +285,13 @@ export class CheckInBot {
         );
       } catch (error) {
         console.error('Error handling feeling submit:', error);
+        // Acknowledge with error message
+        await ack({
+          response_action: 'errors',
+          errors: {
+            feeling_selection: 'An error occurred. Please try again.',
+          },
+        });
       }
     });
 
