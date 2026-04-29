@@ -9,8 +9,11 @@ typings/
 node_modules/
 *.local
 
+# Secrets
 .env
-package-lock.json
-dist
-tsc
-lib
+serviceAccountKey.json
+
+# Claude Code tooling
+.agents/
+.claude/
+skills-lock.json

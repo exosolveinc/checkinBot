@@ -9,35 +9,19 @@
       ]
     },
     {
-      "collectionGroup": "checkins",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "type", "order": "ASCENDING" },
-        { "fieldPath": "timestamp", "order": "DESCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "standups",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "userId", "order": "ASCENDING" },
-        { "fieldPath": "date", "order": "DESCENDING" }
+        { "fieldPath": "date", "order": "ASCENDING" }
       ]
     },
     {
       "collectionGroup": "standups",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "date", "order": "DESCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" },
         { "fieldPath": "timestamp", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "projectChannels",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "projectName", "order": "ASCENDING" },
-        { "fieldPath": "isActive", "order": "ASCENDING" }
       ]
     }
   ],
