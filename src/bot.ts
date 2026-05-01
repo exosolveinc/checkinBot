@@ -117,6 +117,38 @@ export class CheckInBot {
       }
     );
 
+    // /checkout → save checkout record, public confirmation in channel
+    this.app.command(
+      "/checkout",
+      async ({command, ack, client, respond}) => {
+        await ack();
+
+        try {
+          const userId = command.user_id;
+          const userName = command.user_name;
+
+          await this.firebaseService.saveCheckIn({
+            userId,
+            userName,
+            userEmail: "",
+            type: "checkout",
+            timestamp: new Date(),
+          });
+
+          await client.chat.postMessage({
+            channel: command.channel_id,
+            text: `👋 ${userName} has checked out for the day!`,
+          });
+        } catch (error) {
+          console.error("Error handling /checkout:", error);
+          await respond({
+            text: "❌ Error processing check-out. Please try again.",
+            response_type: "ephemeral",
+          });
+        }
+      }
+    );
+
     // /status → ephemeral status
     this.app.command("/status", async ({command, ack, respond}) => {
       await ack();
