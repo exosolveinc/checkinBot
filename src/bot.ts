@@ -63,7 +63,6 @@ export class CheckInBot {
    * Register slash commands.
    */
   private registerCommands(): void {
-    // /checkin → ack → open standup modal
     this.app.command(
       "/checkin",
       async ({command, ack, client, respond}) => {
@@ -90,7 +89,6 @@ export class CheckInBot {
       }
     );
 
-    // /standup → same as /checkin, opens modal
     this.app.command(
       "/standup",
       async ({command, ack, client, respond}) => {
@@ -117,7 +115,6 @@ export class CheckInBot {
       }
     );
 
-    // /checkout → save checkout record, public confirmation in channel
     this.app.command(
       "/checkout",
       async ({command, ack, client, respond}) => {
@@ -149,7 +146,6 @@ export class CheckInBot {
       }
     );
 
-    // /status → ephemeral status
     this.app.command("/status", async ({command, ack, respond}) => {
       await ack();
 
@@ -187,7 +183,6 @@ export class CheckInBot {
    * Register view submission handlers.
    */
   private registerViewSubmissions(): void {
-    // Handle quick standup submission
     this.app.view(
       "quick_standup_submit",
       async ({ack, view, body}) => {
@@ -283,7 +278,6 @@ export class CheckInBot {
       }
     );
 
-    // Home standup button
     this.app.action(
       "home_start_standup",
       async ({ack, body, client}) => {
@@ -300,7 +294,6 @@ export class CheckInBot {
       }
     );
 
-    // Home check-in button → open standup modal
     this.app.action(
       "home_checkin",
       async ({ack, body, client}) => {

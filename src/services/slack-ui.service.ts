@@ -56,7 +56,6 @@ export class SlackUIService {
       },
     ];
 
-    // Status Section
     blocks.push({
       type: "section",
       text: {
@@ -89,7 +88,6 @@ export class SlackUIService {
       type: "divider",
     });
 
-    // Quick Actions Section
     blocks.push({
       type: "section",
       text: {
@@ -130,7 +128,6 @@ export class SlackUIService {
       type: "divider",
     });
 
-    // Standup Status
     if (todayStandup) {
       blocks.push({
         type: "section",
@@ -153,7 +150,6 @@ export class SlackUIService {
       type: "divider",
     });
 
-    // Stats Section
     blocks.push({
       type: "section",
       text: {
@@ -382,7 +378,6 @@ export class SlackUIService {
       },
     ];
 
-    // Colored attachments for each field
     const attachments: any[] = [];
 
     if (data.yesterday) {
