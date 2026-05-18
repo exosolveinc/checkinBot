@@ -106,20 +106,9 @@ export class SlackUIService {
             text: "📝 Check In",
             emoji: true,
           },
-          style: "primary",
+          style: todayStandup ? undefined : "primary",
           action_id: "home_checkin",
           value: "checkin",
-        },
-        {
-          type: "button",
-          text: {
-            type: "plain_text",
-            text: "📝 Submit Standup",
-            emoji: true,
-          },
-          style: todayStandup ? undefined : "primary",
-          action_id: "home_start_standup",
-          value: "start_standup",
         },
       ],
     });

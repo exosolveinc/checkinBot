@@ -12,12 +12,15 @@ import {SlackUIService}
 
 /**
  * Channels allowed to invoke /checkin and /standup.
- * Standups posted back to whichever of these the user invoked from.
+ * Configured via STANDUP_CHANNEL_DEV and STANDUP_CHANNEL_INTERN env vars.
+ * Standups are posted back to whichever channel they were invoked from.
  */
-const ALLOWED_STANDUP_CHANNELS = new Set([
-  "C01C0C6HYKE", // devs
-  "C08UFUB9NHM", // interns
-]);
+const ALLOWED_STANDUP_CHANNELS = new Set(
+  [
+    process.env.STANDUP_CHANNEL_DEV,
+    process.env.STANDUP_CHANNEL_INTERN,
+  ].filter((id): id is string => Boolean(id))
+);
 
 /**
  * Main Check-In Bot class that handles Slack
@@ -38,6 +41,12 @@ export class CheckInBot {
     }
     if (!process.env.SLACK_BOT_TOKEN) {
       throw new Error("SLACK_BOT_TOKEN is required");
+    }
+    if (!process.env.STANDUP_CHANNEL_DEV) {
+      throw new Error("STANDUP_CHANNEL_DEV is required");
+    }
+    if (!process.env.STANDUP_CHANNEL_INTERN) {
+      throw new Error("STANDUP_CHANNEL_INTERN is required");
     }
 
     this.firebaseService = new FirebaseService();
@@ -71,7 +80,7 @@ export class CheckInBot {
         if (!ALLOWED_STANDUP_CHANNELS.has(command.channel_id)) {
           await respond({
             text: "⚠️ Please run this in your standup channel " +
-              "(#interns-standup or #devs-standup).",
+              "(#interns-standup or #standup).",
             response_type: "ephemeral",
           });
           return;
@@ -85,32 +94,6 @@ export class CheckInBot {
           });
         } catch (error) {
           console.error("Error handling /checkin:", error);
-        }
-      }
-    );
-
-    this.app.command(
-      "/standup",
-      async ({command, ack, client, respond}) => {
-        await ack();
-
-        if (!ALLOWED_STANDUP_CHANNELS.has(command.channel_id)) {
-          await respond({
-            text: "⚠️ Please run this in your standup channel " +
-              "(#interns-standup or #devs-standup).",
-            response_type: "ephemeral",
-          });
-          return;
-        }
-
-        try {
-          await client.views.open({
-            trigger_id: command.trigger_id,
-            view: this.slackUIService
-              .buildQuickStandupModal(command.channel_id),
-          });
-        } catch (error) {
-          console.error("Error handling /standup:", error);
         }
       }
     );
@@ -146,7 +129,7 @@ export class CheckInBot {
       }
     );
 
-    this.app.command("/status", async ({command, ack, respond}) => {
+    this.app.command("/stats", async ({command, ack, respond}) => {
       await ack();
 
       try {
@@ -274,22 +257,6 @@ export class CheckInBot {
           });
         } catch (error) {
           console.error("Error publishing home view:", error);
-        }
-      }
-    );
-
-    this.app.action(
-      "home_start_standup",
-      async ({ack, body, client}) => {
-        await ack();
-
-        try {
-          await client.views.open({
-            trigger_id: (body as any).trigger_id,
-            view: this.slackUIService.buildQuickStandupModal(),
-          });
-        } catch (error) {
-          console.error("Error opening standup modal:", error);
         }
       }
     );

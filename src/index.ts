@@ -14,7 +14,7 @@ dotenv.config();
 
 const bot = new CheckInBot();
 
-const STANDUP_CHANNEL_ID = "C01C0C6HYKE";
+const STANDUP_CHANNEL_DEFAULT = process.env.STANDUP_CHANNEL_DEFAULT;
 
 /**
  * Slack bot HTTP handler.
@@ -51,7 +51,7 @@ export const onStandupCreated = onDocumentCreated(
     try {
       const msg = uiService.buildStandupSummaryMessage(data);
       await slackClient.chat.postMessage({
-        channel: data.channelId || STANDUP_CHANNEL_ID,
+        channel: data.channelId || STANDUP_CHANNEL_DEFAULT,
         blocks: msg.blocks,
         attachments: msg.attachments,
         text: `${data.userName}'s standup for ${data.date}`,
