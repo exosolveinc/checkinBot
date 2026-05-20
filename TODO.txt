@@ -1,0 +1,58 @@
+# Next Steps - Implementation Checklist
+
+## 1. Set Up Slack App
+- [ ] Go to api.slack.com/apps
+- [ ] Create new app
+- [ ] Add bot scopes: chat:write, commands, users:read, channels:read
+- [ ] Create slash commands: /checkin, /checkout, /standup, /status
+- [ ] Install app to workspace
+- [ ] Copy bot token and signing secret to .env
+
+## 2. Implement Core Services
+- [ ] Complete FirebaseService methods:
+  - [ ] saveCheckIn()
+  - [ ] getLastCheckIn()
+  - [ ] saveStandup()
+  - [ ] getProjectChannel()
+  - [ ] getBotConfig()
+
+- [ ] Complete SlackUIService methods:
+  - [ ] buildCheckInModal()
+  - [ ] buildStandupFeelingView()
+  - [ ] buildTaskEntryView()
+  - [ ] buildBlockersView()
+  - [ ] buildStandupSummaryMessage()
+
+- [ ] Complete StandupFlowService methods:
+  - [ ] startStandupFlow()
+  - [ ] handleFeelingSubmit()
+  - [ ] handleTaskSubmit()
+  - [ ] handleBlockersSubmit()
+
+## 3. Implement Bot Commands
+- [ ] /checkin command handler
+- [ ] /checkout command handler
+- [ ] /standup command handler
+- [ ] /status command handler
+
+## 4. Configure Firebase
+- [ ] Run: firebase init
+- [ ] Select Functions and Firestore
+- [ ] Create Firebase project
+- [ ] Set up billing (required for functions)
+
+## 5. Set Up Database
+- [ ] Create botConfig/default document in Firestore
+- [ ] Add project channels to projectChannels collection
+- [ ] Get Slack channel IDs and update documents
+
+## 6. Test & Deploy
+- [ ] Test locally with Firebase emulators
+- [ ] Test each command in Slack
+- [ ] Deploy to Firebase
+- [ ] Update Slack app Request URLs
+- [ ] Test in production
+
+## Reference
+Check the complete implementation in the full source files provided.
+You can copy the complete service implementations from there.
